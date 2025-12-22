@@ -1,0 +1,52 @@
+[package]
+name = "tyr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "Tyr - AI-powered threat modeling assistant for design-time security analysis"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP client for Anthropic API
+reqwest = { version = "0.11", features = ["json"] }
+
+# JSON serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CLI interface
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.1"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# File handling
+walkdir = "2.4"
+
+# Time handling
+chrono = "0.4"
+
+# Ollama integration (optional)
+ollama-rs = { version = "0.2", optional = true }
+
+# Async trait support
+async-trait = "0.1"
+
+# Web server (optional)
+axum = { version = "0.7", optional = true }
+tower-http = { version = "0.5", features = ["fs", "cors"], optional = true }
+
+[features]
+default = ["claude"]
+claude = []
+ollama = ["ollama-rs"]
+both = ["claude", "ollama"]
+web = ["axum", "tower-http"]
+
+[[bin]]
+name = "tyr"
+path = "src/main.rs"
