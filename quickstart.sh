@@ -19,15 +19,22 @@ if [ -z "$ANTHROPIC_API_KEY" ]; then
     echo ""
     echo "⚠️  ANTHROPIC_API_KEY not set!"
     echo ""
-    read -p "Enter your Anthropic API key: " api_key
+    read -sp "Enter your Anthropic API key: " api_key
+    echo ""
     export ANTHROPIC_API_KEY="$api_key"
     echo ""
     echo "💡 Add this to your ~/.bashrc or ~/.zshrc to make it permanent:"
-    echo "   export ANTHROPIC_API_KEY='$api_key'"
+    echo "   export ANTHROPIC_API_KEY='sk-ant-...'"
     echo ""
 fi
 
-echo "✅ API key configured"
+# Verify API key is actually set
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+    echo "❌ API key is empty. Please set ANTHROPIC_API_KEY environment variable."
+    exit 1
+fi
+
+echo "✅ API key configured (${#ANTHROPIC_API_KEY} characters)"
 echo ""
 
 # Build the project

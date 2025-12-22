@@ -3,7 +3,6 @@
 **/*.rs.bk
 *.pdb
 Cargo.lock
-examples
 
 # IDE
 .idea/
@@ -13,15 +12,51 @@ examples
 *~
 .DS_Store
 
-# Environment
+# Environment - CRITICAL: Never commit these!
 .env
 .env.local
+.env.production
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# API Keys and Secrets - Additional protection
+**/secret*
+**/*secret*
+**/*credentials*
+**/*password*
+**/api-key*
+**/*token*
+
+# But allow our sanitized example files
+!examples/**
 
 # Output files
 *.json
 *.html
 !examples/*.json
 !examples/*.html
+threat_report.html
+*-report.html
+*-threats.json
 
 # Logs
 *.log
+*.log.*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp

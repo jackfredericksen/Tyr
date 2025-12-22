@@ -9,7 +9,7 @@ mod analyzer;
 mod reporters;
 
 use analyzer::ThreatAnalyzer;
-use models::{InputType, AnalysisResult};
+use models::InputType;
 use reporters::{ConsoleReporter, JsonReporter, HtmlReporter};
 
 #[derive(Parser)]
@@ -78,8 +78,11 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load environment variables from .env file (if it exists)
+    dotenv::dotenv().ok();
+
     print_banner();
-    
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -171,8 +174,8 @@ async fn handle_analyze(
 async fn handle_scan(
     directory: PathBuf,
     pattern: Option<String>,
-    format: String,
-    output: Option<PathBuf>,
+    _format: String,
+    _output: Option<PathBuf>,
 ) -> Result<()> {
     println!("{}", "📁 Scanning directory for security issues...".cyan().bold());
     

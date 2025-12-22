@@ -36,6 +36,9 @@ ollama-rs = { version = "0.2", optional = true }
 # Async trait support
 async-trait = "0.1"
 
+# Environment variables from .env file
+dotenv = "0.15"
+
 # Web server (optional)
 axum = { version = "0.7", optional = true }
 tower-http = { version = "0.5", features = ["fs", "cors"], optional = true }

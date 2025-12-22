@@ -1,0 +1,326 @@
+# Example Kubernetes Manifest (Intentionally Insecure for Testing)
+# DO NOT USE IN PRODUCTION - For threat modeling demonstration only
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app
+  labels:
+    name: demo-app
+
+---
+# ISSUE: Secrets stored as base64 (not encrypted at rest)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: demo-app
+type: Opaque
+data:
+  # ISSUE: Hardcoded credentials in manifest
+  database-password: U3VwZXJTZWNyZXQxMjMh  # "SuperSecret123!"
+  api-key: MTIzNDU2Nzg5MGFiY2RlZg==      # "1234567890abcdef"
+  stripe-secret-key: c2tfdGVzdF8xMjM0NTY3ODkw  # "sk_test_1234567890"
+
+---
+# ISSUE: ConfigMap with sensitive data
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: demo-app
+data:
+  database-host: "db.example.com"
+  database-port: "5432"
+  database-name: "production"
+  # ISSUE: Database username in ConfigMap
+  database-user: "admin"
+  # ISSUE: API endpoints exposing internal architecture
+  internal-api: "http://internal-service.cluster.local:8080"
+  debug-mode: "true"  # ISSUE: Debug mode in production
+
+---
+# ISSUE: ServiceAccount with excessive permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
+  namespace: demo-app
+
+---
+# ISSUE: ClusterRole with admin privileges
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: app-cluster-role
+rules:
+  # ISSUE: Full access to all resources
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: app-cluster-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: app-service-account
+    namespace: demo-app
+roleRef:
+  kind: ClusterRole
+  name: app-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ISSUE: Deployment with multiple security issues
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: demo-app
+  labels:
+    app: web-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      serviceAccountName: app-service-account
+
+      # ISSUE: No pod security context
+      # securityContext: {}
+
+      containers:
+      - name: web
+        image: nginx:latest  # ISSUE: Using 'latest' tag (not pinned)
+
+        # ISSUE: Container running as root
+        # securityContext:
+        #   runAsNonRoot: true
+        #   runAsUser: 1000
+        #   allowPrivilegeEscalation: false
+        #   capabilities:
+        #     drop:
+        #       - ALL
+
+        ports:
+        - containerPort: 80
+          name: http
+
+        # ISSUE: Environment variables with secrets
+        env:
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: database-password
+        - name: API_KEY
+          value: "hardcoded-api-key-12345"  # ISSUE: Hardcoded in manifest
+        - name: DEBUG
+          value: "true"
+
+        # ISSUE: No resource limits
+        resources: {}
+        #   limits:
+        #     cpu: "500m"
+        #     memory: "512Mi"
+        #   requests:
+        #     cpu: "250m"
+        #     memory: "256Mi"
+
+        # ISSUE: No health checks
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 80
+        # readinessProbe:
+        #   httpGet:
+        #     path: /ready
+        #     port: 80
+
+        volumeMounts:
+        - name: app-data
+          mountPath: /data
+        # ISSUE: Mounting host path
+        - name: host-volume
+          mountPath: /host-data
+
+      volumes:
+      - name: app-data
+        emptyDir: {}
+      # ISSUE: Host path volume (access to node filesystem)
+      - name: host-volume
+        hostPath:
+          path: /var/lib/data
+          type: Directory
+
+---
+# ISSUE: Service exposed with LoadBalancer (potential cost and attack surface)
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-service
+  namespace: demo-app
+spec:
+  type: LoadBalancer  # ISSUE: Publicly exposed
+  # ISSUE: No source IP restrictions
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    app: web-app
+
+---
+# ISSUE: Ingress without TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-app-ingress
+  namespace: demo-app
+  annotations:
+    # ISSUE: No WAF or rate limiting
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  # ISSUE: No TLS configuration
+  # tls:
+  # - hosts:
+  #   - app.example.com
+  #   secretName: tls-secret
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-app-service
+            port:
+              number: 80
+
+---
+# ISSUE: PersistentVolume without encryption
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: app-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  # ISSUE: No storage class (no encryption at rest)
+  hostPath:
+    path: /mnt/data  # ISSUE: Using hostPath in production
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-pvc
+  namespace: demo-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# ISSUE: CronJob with privileged access
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-job
+  namespace: demo-app
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: app-service-account
+          containers:
+          - name: backup
+            image: backup-tool:latest  # ISSUE: 'latest' tag
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # ISSUE: Credentials in command
+              backup-database --host=db.example.com --user=admin --password=SuperSecret123!
+            # ISSUE: Running as privileged
+            securityContext:
+              privileged: true
+              runAsUser: 0
+          restartPolicy: OnFailure
+
+---
+# ISSUE: NetworkPolicy allowing all traffic (or missing NetworkPolicy)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all
+  namespace: demo-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}  # ISSUE: Allow all ingress
+  egress:
+  - {}  # ISSUE: Allow all egress
+
+---
+# ISSUE: DaemonSet with host network access
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: monitoring-agent
+  namespace: demo-app
+spec:
+  selector:
+    matchLabels:
+      app: monitoring
+  template:
+    metadata:
+      labels:
+        app: monitoring
+    spec:
+      # ISSUE: Using host network
+      hostNetwork: true
+      # ISSUE: Using host PID namespace
+      hostPID: true
+      # ISSUE: Using host IPC namespace
+      hostIPC: true
+
+      containers:
+      - name: agent
+        image: monitoring-agent:1.0
+        # ISSUE: Privileged container
+        securityContext:
+          privileged: true
+        volumeMounts:
+        # ISSUE: Mounting Docker socket
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
