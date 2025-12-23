@@ -1,0 +1,62 @@
+[package]
+name = "tyr-desktop"
+version = "0.1.0"
+description = "Tyr - AI-powered threat modeling assistant desktop app"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+# Tauri core
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.9.5", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP client for APIs
+reqwest = { version = "0.11", features = ["json"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# File handling
+walkdir = "2.4"
+
+# Time handling
+chrono = "0.4"
+
+# Async trait support
+async-trait = "0.1"
+
+# CLI colors (for reporters - even though we're using GUI, reporters module needs it)
+colored = "2.1"
+
+# Environment variables
+dotenv = "0.15"
+
+# Ollama integration (optional)
+ollama-rs = { version = "0.2", optional = true }
+
+[features]
+default = ["ollama"]
+claude = []
+ollama = ["ollama-rs"]
+both = ["claude", "ollama"]
