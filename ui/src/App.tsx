@@ -1,222 +1,257 @@
-import { useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import './App.css'
-
-interface Threat {
-  id: string
-  title: string
-  risk_level: string
-  description: string
-  category: string
-}
-
-interface AnalysisResult {
-  threats: Threat[]
-  overall_risk_score: number
-}
+import { motion } from 'framer-motion'
+import { Toaster } from 'react-hot-toast'
+import { SunIcon, MoonIcon, PlayIcon } from '@heroicons/react/24/outline'
+import { Sidebar } from './components/Sidebar'
+import { FileUpload } from './components/FileUpload'
+import { Dashboard } from './components/Dashboard'
+import { ChatPanel } from './components/ChatPanel'
+import { ProjectList } from './components/ProjectList'
+import { Settings } from './components/Settings'
+import { useAppStore } from './store'
+import type { AnalysisResult } from './types'
+import toast from 'react-hot-toast'
 
 function App() {
-  const [content, setContent] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<AnalysisResult | null>(null)
-  const [error, setError] = useState('')
-  const [provider, setProvider] = useState('Loading...')
+  const {
+    currentView,
+    currentProject,
+    setAnalysisResult,
+    isAnalyzing,
+    setIsAnalyzing,
+    settings,
+    updateSettings
+  } = useAppStore()
 
-  useState(() => {
-    invoke<string>('initialize_analyzer')
-      .then(msg => setProvider(msg))
-      .catch(err => setError(`Failed to initialize: ${err}`))
-  })
+  const [darkMode, setDarkMode] = useState(false)
+  const isMountedRef = useRef(true)
 
-  const analyzeContent = async () => {
-    if (!content.trim()) {
-      setError('Please enter some content to analyze')
+  // Initialize theme and listen for system theme changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const updateTheme = () => {
+      const isDark =
+        settings.theme === 'dark' ||
+        (settings.theme === 'system' && mediaQuery.matches)
+      setDarkMode(isDark)
+
+      if (isDark) {
+        document.documentElement.classList.add('dark')
+      } else {
+        document.documentElement.classList.remove('dark')
+      }
+    }
+
+    // Initial update
+    updateTheme()
+
+    // Listen for system theme changes
+    const handleChange = () => {
+      if (settings.theme === 'system') {
+        updateTheme()
+      }
+    }
+
+    mediaQuery.addEventListener('change', handleChange)
+
+    // Cleanup listener on unmount
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange)
+    }
+  }, [settings.theme])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  // Run analysis
+  const runAnalysis = async () => {
+    if (!currentProject || currentProject.files.length === 0) {
+      toast.error('Please add files first')
       return
     }
 
-    setLoading(true)
-    setError('')
+    if (!isMountedRef.current) return
+    setIsAnalyzing(true)
+    const toastId = toast.loading('Analyzing your architecture...')
 
     try {
-      const analysis = await invoke<AnalysisResult>('analyze_content', {
-        content,
+      // Combine all files
+      const combinedContent = currentProject.files
+        .map((f) => `=== ${f.name} (${f.type}) ===\n${f.content}\n`)
+        .join('\n\n')
+
+      // Call Tauri command
+      const result = await invoke<AnalysisResult>('analyze_content', {
+        content: combinedContent,
         inputType: 'architecture',
         includeEducation: true
       })
-      setResult(analysis)
-    } catch (e) {
-      setError(String(e))
+
+      // Only update state if component is still mounted
+      if (!isMountedRef.current) return
+
+      setAnalysisResult(result)
+      toast.success('Analysis complete!', { id: toastId })
+    } catch (error) {
+      console.error('Analysis error:', error)
+      if (isMountedRef.current) {
+        toast.error(`Analysis failed: ${error}`, { id: toastId })
+      }
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setIsAnalyzing(false)
+      }
     }
   }
 
-  const getRiskColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'critical': return '#fee'
-      case 'high': return '#ffd'
-      case 'medium': return '#ffe'
-      default: return '#efe'
+  const toggleTheme = () => {
+    const newTheme = darkMode ? 'light' : 'dark'
+    setDarkMode(!darkMode)
+    updateSettings({ theme: newTheme })
+  }
+
+  const getViewContent = () => {
+    switch (currentView) {
+      case 'upload':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Upload Files
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Add your architecture diagrams, infrastructure code, or API specs
+                </p>
+              </div>
+
+              {currentProject && currentProject.files.length > 0 && (
+                <button
+                  onClick={runAnalysis}
+                  disabled={isAnalyzing}
+                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg shadow-lg transition-all hover:shadow-xl disabled:shadow-none"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="w-5 h-5" />
+                      <span>Run Analysis</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+            <FileUpload />
+          </div>
+        )
+
+      case 'dashboard':
+        return <Dashboard />
+
+      case 'chat':
+        return <ChatPanel />
+
+      case 'projects':
+        return <ProjectList />
+
+      case 'settings':
+        return <Settings />
+
+      default:
+        return null
     }
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'system-ui', maxWidth: '1200px', margin: '0 auto' }}>
-      <header style={{ borderBottom: '2px solid #2563eb', paddingBottom: '20px', marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, color: '#1e40af' }}>⚔️ Tyr - AI Threat Modeling Assistant</h1>
-        <p style={{ color: '#64748b', margin: '5px 0 0 0' }}>{provider}</p>
-      </header>
+    <div className={darkMode ? 'dark' : ''}>
+      <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
+        {/* Sidebar */}
+        <Sidebar />
 
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>
-          Architecture / Infrastructure Code
-        </label>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Paste your system architecture description, Terraform code, Kubernetes manifests, or API specifications here..."
-          style={{
-            width: '100%',
-            height: '250px',
-            padding: '12px',
-            fontSize: '14px',
-            fontFamily: 'ui-monospace, monospace',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            resize: 'vertical'
-          }}
-        />
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="flex-shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white lg:hidden">
+                  Tyr
+                </h1>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                {/* Theme Toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  aria-label="Toggle theme"
+                >
+                  {darkMode ? (
+                    <SunIcon className="w-5 h-5" />
+                  ) : (
+                    <MoonIcon className="w-5 h-5" />
+                  )}
+                </button>
+
+                {/* User Info */}
+                <div className="flex items-center space-x-2 text-sm">
+                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                    U
+                  </div>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Content Area */}
+          <main className="flex-1 overflow-y-auto p-6">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {getViewContent()}
+            </motion.div>
+          </main>
+        </div>
       </div>
 
-      <button
-        onClick={analyzeContent}
-        disabled={loading}
-        style={{
-          padding: '12px 24px',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          color: 'white',
-          backgroundColor: loading ? '#94a3b8' : '#2563eb',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: loading ? 'wait' : 'pointer',
-          transition: 'background-color 0.2s'
+      {/* Toast Notifications */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: darkMode ? '#1f2937' : '#ffffff',
+            color: darkMode ? '#ffffff' : '#000000',
+            border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#ffffff'
+            }
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#ffffff'
+            }
+          }
         }}
-        onMouseOver={(e) => !loading && (e.currentTarget.style.backgroundColor = '#1d4ed8')}
-        onMouseOut={(e) => !loading && (e.currentTarget.style.backgroundColor = '#2563eb')}
-      >
-        {loading ? '🔍 Analyzing...' : '🚀 Analyze for Threats'}
-      </button>
-
-      {error && (
-        <div style={{
-          color: '#dc2626',
-          backgroundColor: '#fee2e2',
-          padding: '12px',
-          marginTop: '20px',
-          borderRadius: '6px',
-          border: '1px solid #fca5a5'
-        }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {result && (
-        <div style={{ marginTop: '30px' }}>
-          <div style={{
-            backgroundColor: '#f1f5f9',
-            padding: '20px',
-            borderRadius: '8px',
-            marginBottom: '20px'
-          }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>
-              📊 Analysis Summary
-            </h2>
-            <p style={{ margin: '5px 0', fontSize: '18px' }}>
-              <strong>Total Threats Found:</strong> {result.threats.length}
-            </p>
-            {result.overall_risk_score !== undefined && (
-              <p style={{ margin: '5px 0', fontSize: '18px' }}>
-                <strong>Overall Risk Score:</strong> {result.overall_risk_score}/100
-              </p>
-            )}
-          </div>
-
-          <h2 style={{ marginTop: '30px', marginBottom: '15px' }}>
-            🎯 Identified Threats
-          </h2>
-
-          {result.threats.length === 0 ? (
-            <p style={{ color: '#10b981', fontSize: '16px' }}>
-              ✅ No major threats identified! Your architecture looks secure.
-            </p>
-          ) : (
-            result.threats.map((threat, index) => (
-              <div
-                key={threat.id}
-                style={{
-                  border: '1px solid #e2e8f0',
-                  padding: '20px',
-                  marginBottom: '15px',
-                  borderRadius: '8px',
-                  backgroundColor: 'white',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                    [{index + 1}] {threat.title}
-                  </span>
-                  <span
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      backgroundColor: getRiskColor(threat.risk_level),
-                      border: '1px solid #cbd5e1'
-                    }}
-                  >
-                    {threat.risk_level.toUpperCase()}
-                  </span>
-                  <span
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      backgroundColor: '#e0e7ff',
-                      color: '#3730a3'
-                    }}
-                  >
-                    {threat.category}
-                  </span>
-                </div>
-                <p style={{
-                  marginTop: '12px',
-                  color: '#475569',
-                  lineHeight: '1.6'
-                }}>
-                  {threat.description}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      <footer style={{
-        marginTop: '50px',
-        paddingTop: '20px',
-        borderTop: '1px solid #e2e8f0',
-        color: '#64748b',
-        fontSize: '14px',
-        textAlign: 'center'
-      }}>
-        <p>Tyr Desktop - AI-Powered Threat Modeling Assistant</p>
-        <p style={{ fontSize: '12px', marginTop: '5px' }}>
-          Using local AI for 100% private security analysis
-        </p>
-      </footer>
+      />
     </div>
   )
 }
