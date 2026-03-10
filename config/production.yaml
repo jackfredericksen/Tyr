@@ -1,0 +1,11 @@
+environment: production
+log_level: WARNING
+
+# Override thresholds for live trading — also set THRESHOLDS__DRY_RUN=false in .env
+thresholds:
+  min_net_profit_pct: 0.008   # tighter in prod
+  max_position_usdc: 100.0
+  max_daily_loss_usdc: 500.0
+  dry_run: true               # still true; override via env var
+
+kalshi_poll_interval: 3.0
